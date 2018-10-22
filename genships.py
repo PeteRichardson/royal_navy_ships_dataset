@@ -16,6 +16,7 @@ with open(filename, "rb") as f:
 		if r:
 			rate = r.groups()[0]
 			rate = rate.replace(" rates", "")
+			rate = rate.replace(" Rates", "")
 			rate = rate.replace(" rate", "")
 			#print rate
 			continue
