@@ -8,62 +8,67 @@ from tableausdk.HyperExtract import ExtractAPI, Extract, TableDefinition, Row
 from datetime import datetime
 import logging
 
-APP_NAME = "NLP"
-
-logger = logging.getLogger("NLP")
-logging.basicConfig(level=logging.INFO)
 
 class Ship(object):
 	def __init__(self, ship_id, text):
 		self.id = ship_id
 		self.events=[]
 		self.notes = []
-		self.start_year = 9999
 		self.end_year = 9999
 		self.end_reason = ""
-		logger.debug(text)
-		(self.start_year, self.name, self.guns, self.rating,self.misc) = text.split(",")
-		for c in extract_clauses(self.misc):
-			self.text = c.strip()
-			if (self.start_year != '-') and (self.start_year != '?'):
-				self.start_year = int(self.start_year)
+		(self.start_year, self.name, self.guns, self.rating,self.other) = text.split(",")
+		if self.start_year in ['?','-']:
+			self.start_year = 9999
+		else:
+			self.start_year = int(self.start_year)
+		self.events = self.get_events(self.other)
+		self.notes = ". ".join(self.notes)
+		self.other = None
+		self.text = None
+
+	def get_events(self, text):
+		events = []
+		text = text.replace(";",".")
+		clauses = text.split(".")
+		for c in clauses:
+			clause = c.strip()
 			#m = re.match("(.*) ([\d-]+)( \[[0-9\[\]]\])?$",c)
 			m = re.match("(.*) ?([\d]{4})(-\d+)? ?\[?.*\]?$",c)
 			if m:
-				self.text,self.start_year,_ = m.groups()
-				self.text = self.text.strip()
-				self.start_year = int(self.start_year)
-				event = (self.start_year, self.text)
-				self.events.append(event)
-				if self.text in ['sunk by the Luftwaffe',
-									'burnt and broken up',
-									'cancelled',
-									'destroyed by fire',
-									'broken up',
-									'sold',
-									'scuttled',
-									'foundered',
-									'hulked',
-									'sold for breaking',
-									'wreck sold for breaking']:
-					self.end_year = int(self.start_year)
-					self.end_reason = self.text
+				ctext,cyear,_ = m.groups()
+				ctext = ctext.strip()
+				cyear = int(cyear)
+				event = (cyear, ctext)
+				events.append(event)
+				self.get_final_event(cyear, ctext)
 			else:
 				if c[0:2]=="ex-":
 					ex = c[3:]
 				else:				
-					self.notes.append(self.text.strip())
-					#print("\twas {}".format(c.strip()))
-					#print("\t----{}".format(self.text'].strip()))
-		#ship.pop('notes','')
-		self.notes = ". ".join(self.notes)
-		self.misc = None
-		self.text = None
-		#if not ship.get('end_year',None):
-		#	print('-'*50)
-		#pprint(ship)
+					self.notes.append(clause)
+		return events
 
-extract = None
+
+	def get_final_event(self, year, text):
+		if text in ['sunk by the Luftwaffe',
+						'burnt and broken up',
+						'cancelled',
+						'destroyed by fire',
+						'broken up',
+						'sold',
+						'scuttled',
+						'foundered',
+						'hulked',
+						'sold for breaking',
+						'wreck sold for breaking']:
+			self.end_year = int(year)
+			self.end_reason = text
+
+	def __str__(self):
+		return "[{:4}] {} ({}, {}g)".format(self.id, self.name, self.start_year, self.guns)
+
+
+
 
 def define_schema(extract):
 	# Define Table Schema (If we are creating a new extract)
@@ -83,11 +88,6 @@ def define_schema(extract):
 		schema.addColumn('Notes', Type.CHAR_STRING)
 		extract.addTable('Extract', schema)
 
-def extract_clauses(notes):
-	notes = notes.replace(";",".")
-	clauses = notes.split(".")
-	return clauses
-
 def create_row(schema, ship):
 	row = Row(schema)
 	t = datetime.now().timetuple()
@@ -99,29 +99,37 @@ def create_row(schema, ship):
 	row.setDateTime(5, int(ship.end_year), 1, 1, 12, 0, 0, 0)
 	row.setCharString(6, ship.end_reason)
 	row.setCharString(7, ship.notes)
-
-	logger.info("Inserting ship {}. {}".format(ship.id, ship.name))
 	return row
 
-ExtractAPI.initialize()
+if __name__ == '__main__':
+	APP_NAME = "NLP"
 
-output_filename = "ships.hyper"
-os.unlink(output_filename)
+	logger = logging.getLogger("NLP")
+	logging.basicConfig(level=logging.DEBUG)
 
-extract = Extract(output_filename)
+	with open("ships.csv", "rb") as f:
+		ExtractAPI.initialize()
 
-define_schema(extract)
-table = extract.openTable('Extract')
-schema = table.getTableDefinition()
+		output_filename = "ships.hyper"
+		os.unlink(output_filename)
 
-with open("ships.csv", "rb") as f:
-	ship_id = 1
-	for line in f.readlines()[1:]:     # [1:] skips the header line in the csv
-		ship = Ship(ship_id, line)
-		row = create_row(schema, ship)
-		ship_id = ship_id + 1
-		table.insert(row)
+		extract = Extract(output_filename)
 
-	extract.close()
+		define_schema(extract)
+		table = extract.openTable('Extract')
+		schema = table.getTableDefinition()
 
-	ExtractAPI.cleanup()
+		ship_id = 0
+		for line in f.readlines()[1:]:     # [1:] skips the header line in the csv
+			ship_id = ship_id + 1
+			ship = Ship(ship_id, line)
+			row = create_row(schema, ship)
+			table.insert(row)
+
+			logger.info(ship)
+			logger.debug(ship.notes)
+
+
+		extract.close()
+
+		ExtractAPI.cleanup()
