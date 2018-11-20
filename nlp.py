@@ -9,6 +9,27 @@ from datetime import datetime
 import logging
 
 
+class ShipEvent(object):
+	def __init__(self, year, text):
+		self.year = year
+		self.text = text
+
+	def is_final(self):
+		return self.text in ['sunk by the Luftwaffe',
+						'burnt and broken up',
+						'cancelled',
+						'destroyed by fire',
+						'broken up',
+						'sold',
+						'scuttled',
+						'foundered',
+						'hulked',
+						'sold for breaking',
+						'wreck sold for breaking']
+
+	def __str__(self):
+		return "\t{}: {}".format(self.year, self.text)
+
 class Ship(object):
 	def __init__(self, ship_id, text):
 		self.id = ship_id
@@ -36,11 +57,11 @@ class Ship(object):
 			m = re.match("(.*) ?([\d]{4})(-\d+)? ?\[?.*\]?$",c)
 			if m:
 				ctext,cyear,_ = m.groups()
-				ctext = ctext.strip()
-				cyear = int(cyear)
-				event = (cyear, ctext)
+				event = ShipEvent(int(cyear), ctext.strip())
 				events.append(event)
-				self.get_final_event(cyear, ctext)
+				if event.is_final():
+					self.end_year = event.year
+					self.end_reason = event.text
 			else:
 				if c[0:2]=="ex-":
 					ex = c[3:]
@@ -48,27 +69,8 @@ class Ship(object):
 					self.notes.append(clause)
 		return events
 
-
-	def get_final_event(self, year, text):
-		if text in ['sunk by the Luftwaffe',
-						'burnt and broken up',
-						'cancelled',
-						'destroyed by fire',
-						'broken up',
-						'sold',
-						'scuttled',
-						'foundered',
-						'hulked',
-						'sold for breaking',
-						'wreck sold for breaking']:
-			self.end_year = int(year)
-			self.end_reason = text
-
 	def __str__(self):
 		return "[{:4}] {} ({}, {}g)".format(self.id, self.name, self.start_year, self.guns)
-
-
-
 
 def define_schema(extract):
 	# Define Table Schema (If we are creating a new extract)
@@ -102,10 +104,8 @@ def create_row(schema, ship):
 	return row
 
 if __name__ == '__main__':
-	APP_NAME = "NLP"
-
 	logger = logging.getLogger("NLP")
-	logging.basicConfig(level=logging.DEBUG)
+	logging.basicConfig(level=logging.INFO)
 
 	with open("ships.csv", "rb") as f:
 		ExtractAPI.initialize()
@@ -128,6 +128,8 @@ if __name__ == '__main__':
 
 			logger.info(ship)
 			logger.debug(ship.notes)
+			for e in ship.events:
+				logger.debug(e)
 
 
 		extract.close()
