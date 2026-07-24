@@ -6,7 +6,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Dict, Iterator, List, Optional
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Tuple
+
+from royal_navy_ships.model import Ship, ShipEvent, ShipName, new_ship_id
 
 logger = logging.getLogger("wikidata")
 
@@ -27,6 +30,8 @@ RATING_CLASS_QIDS: Dict[str, str] = {
 }
 
 CHUNK_SIZE = 200
+
+CACHE_PATH = Path(".cache/wikidata_raw.json")
 
 
 def run_sparql_query(query: str, retries: int = 3, backoff_seconds: float = 2.0) -> dict:
@@ -106,3 +111,119 @@ def fetch_armament(ship_qids: List[str]) -> List[dict]:
         result = run_sparql_query(build_armament_query(chunk))
         rows.extend(result["results"]["bindings"])
     return rows
+
+
+def _qid_from_uri(uri: str) -> str:
+    return uri.rsplit("/", 1)[-1]
+
+
+def parse_candidates(rows: List[dict]) -> Dict[str, dict]:
+    ships: Dict[str, dict] = {}
+    for row in rows:
+        qid = _qid_from_uri(row["ship"]["value"])
+        if qid in ships:
+            continue  # ship matched more than one rating class; first match wins
+        class_qid = _qid_from_uri(row["class"]["value"])
+        ships[qid] = {
+            "label": row.get("shipLabel", {}).get("value", qid),
+            "description": row.get("shipDescription", {}).get("value", ""),
+            "rating": RATING_CLASS_QIDS.get(class_qid),
+            "events": [],
+            "guns_counts": [],
+        }
+    return ships
+
+
+def attach_events(ships: Dict[str, dict], rows: List[dict]) -> None:
+    for row in rows:
+        qid = _qid_from_uri(row["ship"]["value"])
+        if qid not in ships:
+            continue
+        ships[qid]["events"].append(
+            ShipEvent(
+                description=row.get("eventLabel", {}).get("value", ""),
+                date=row.get("date", {}).get("value"),
+                named_as=row.get("namedAs", {}).get("value"),
+            )
+        )
+
+
+def attach_armament(ships: Dict[str, dict], rows: List[dict]) -> None:
+    for row in rows:
+        qid = _qid_from_uri(row["ship"]["value"])
+        if qid not in ships:
+            continue
+        ships[qid]["guns_counts"].append(int(row["guns"]["value"]))
+
+
+def build_names(label: str, events: List[ShipEvent]) -> List[ShipName]:
+    named_events = sorted(
+        (e for e in events if e.named_as and e.date),
+        key=lambda e: e.date,
+    )
+    if not named_events:
+        return [ShipName(name=label)]
+
+    names: List[ShipName] = []
+    for i, event in enumerate(named_events):
+        end_date = named_events[i + 1].date if i + 1 < len(named_events) else None
+        names.append(ShipName(name=event.named_as, start_date=event.date, end_date=end_date))
+    return names
+
+
+def to_ships(ships: Dict[str, dict]) -> List[Ship]:
+    result = []
+    for qid, data in ships.items():
+        # Wikidata's armament data (P520/P1114) is very sparse and, where present,
+        # was found during design to sometimes undercount well-documented ships
+        # (e.g. HMS Victory) -- treat this sum as best-effort, not authoritative.
+        guns = str(sum(data["guns_counts"])) if data["guns_counts"] else None
+        result.append(
+            Ship(
+                id=new_ship_id(),
+                names=build_names(data["label"], data["events"]),
+                guns=guns,
+                rating=data["rating"],
+                notes=data["description"],
+                events=data["events"],
+                external_ids={"wikidata": qid},
+            )
+        )
+    return result
+
+
+def load_cache(cache_path: Path) -> Optional[dict]:
+    if not cache_path.exists():
+        return None
+    with cache_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_cache(cache_path: Path, raw: dict) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with cache_path.open("w", encoding="utf-8") as f:
+        json.dump(raw, f, indent=2, sort_keys=True)
+
+
+def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool]:
+    """Fetch ships from Wikidata. Returns (ships, changed) -- changed is False
+    if the freshly-fetched raw result is identical to what's cached on disk."""
+    candidates_result = run_sparql_query(build_candidates_query())
+    candidate_rows = candidates_result["results"]["bindings"]
+    ship_qids = [_qid_from_uri(row["ship"]["value"]) for row in candidate_rows]
+
+    raw = {
+        "candidates": candidate_rows,
+        "events": fetch_events(ship_qids),
+        "armament": fetch_armament(ship_qids),
+    }
+
+    cached = load_cache(cache_path)
+    changed = raw != cached
+    if changed:
+        save_cache(cache_path, raw)
+
+    ships = parse_candidates(raw["candidates"])
+    attach_events(ships, raw["events"])
+    attach_armament(ships, raw["armament"])
+    return to_ships(ships), changed
