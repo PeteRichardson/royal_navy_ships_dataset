@@ -212,18 +212,27 @@ def save_cache(cache_path: Path, raw: dict) -> None:
     os.replace(tmp_path, cache_path)
 
 
+def _canonicalize(raw: dict) -> dict:
+    """Sort each query's binding rows into a stable order so that comparing
+    two raw results is insensitive to Wikidata's nondeterministic row order."""
+    return {
+        key: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True))
+        for key, rows in raw.items()
+    }
+
+
 def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool]:
     """Fetch ships from Wikidata. Returns (ships, changed) -- changed is False
     if the freshly-fetched raw result is identical to what's cached on disk."""
     candidates_result = run_sparql_query(build_candidates_query())
     candidate_rows = candidates_result["results"]["bindings"]
-    ship_qids = [_qid_from_uri(row["ship"]["value"]) for row in candidate_rows]
+    ship_qids = sorted({_qid_from_uri(row["ship"]["value"]) for row in candidate_rows})
 
-    raw = {
+    raw = _canonicalize({
         "candidates": candidate_rows,
         "events": fetch_events(ship_qids),
         "armament": fetch_armament(ship_qids),
-    }
+    })
 
     cached = load_cache(cache_path)
     changed = raw != cached
