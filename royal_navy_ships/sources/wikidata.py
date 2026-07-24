@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -195,14 +196,20 @@ def to_ships(ships: Dict[str, dict]) -> List[Ship]:
 def load_cache(cache_path: Path) -> Optional[dict]:
     if not cache_path.exists():
         return None
-    with cache_path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with cache_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        logger.warning("cache file %s is unreadable or corrupt; ignoring it", cache_path)
+        return None
 
 
 def save_cache(cache_path: Path, raw: dict) -> None:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with cache_path.open("w", encoding="utf-8") as f:
+    tmp_path = cache_path.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
         json.dump(raw, f, indent=2, sort_keys=True)
+    os.replace(tmp_path, cache_path)
 
 
 def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool]:
