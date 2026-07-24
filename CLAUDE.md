@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A small data pipeline that scrapes/parses a Wikipedia list of Royal Navy sailing ships (1663–1860) into `ships.csv`, then optionally enriches or exports that data. There is no build system, test suite, or package manifest — just standalone scripts run individually.
+A Python package (`royal_navy_ships/`) that queries Wikidata's public SPARQL endpoint for Royal Navy sailing ships and generates a canonical, gitignored `ships.json` dataset (published via GitHub Releases, not tracked in git history). There is still no build system or test suite. Run the pipeline via `python3 -m royal_navy_ships.pipeline` from the repo root.
 
 ## Data pipeline
 
 - **`royal_navy_ships/model.py`** — canonical `Ship`/`ShipName`/`ShipEvent` dataclasses shared by all source adapters. A ship's name is a time-qualified list (`names`), not a single field, since ships were often renamed; `start_year`/`end_year`/`end_reason` are derived properties from the event timeline, not stored fields.
-- **`royal_navy_ships/sources/wikidata.py`** — the (currently only) source adapter. Queries Wikidata's public SPARQL endpoint live for Royal Navy ships in the sailing-ship rating classes (first-rate through sixth-rate, sloop-of-war, gun-brig -- see `RATING_CLASS_QIDS`), not a hardcoded date range. Caches the raw SPARQL result at `.cache/wikidata_raw.json` (gitignored) and skips regenerating output if nothing changed since the last run.
-- **`royal_navy_ships/pipeline.py`** — CLI entry point. Run via `python3 -m royal_navy_ships.pipeline` from the repo root. Writes `ships.json` (gitignored -- the dataset is published via GitHub Releases, not tracked in git history).
+- **`royal_navy_ships/sources/wikidata.py`** — the (currently only) source adapter. Queries Wikidata's public SPARQL endpoint live for Royal Navy ships in the sailing-ship rating classes (first-rate through sixth-rate, sloop-of-war, gun-brig -- see `RATING_CLASS_QIDS`), not a hardcoded date range. `fetch_ships()` compares the freshly-fetched result against the cache at `.cache/wikidata_raw.json` (gitignored) and reports whether it changed, but does not save the cache itself.
+- **`royal_navy_ships/pipeline.py`** — CLI entry point. Run via `python3 -m royal_navy_ships.pipeline` from the repo root. Writes `ships.json` (gitignored -- the dataset is published via GitHub Releases, not tracked in git history) atomically, then commits the new cache -- in that order, so a failed/killed output write never leaves a cache that falsely claims the output is current. Skips regeneration if nothing changed since the last run.
 
 No third-party dependencies -- the Wikidata client uses `urllib.request` from the standard library.
 

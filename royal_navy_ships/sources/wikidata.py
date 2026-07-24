@@ -123,7 +123,10 @@ def parse_candidates(rows: List[dict]) -> Dict[str, dict]:
     for row in rows:
         qid = _qid_from_uri(row["ship"]["value"])
         if qid in ships:
-            continue  # ship matched more than one rating class; first match wins
+            # ship matched more than one rating class; rows arrive canonicalized (sorted
+            # by row JSON), so the pick is deterministic but has no historical meaning --
+            # revisit if rating priority matters
+            continue
         class_qid = _qid_from_uri(row["class"]["value"])
         ships[qid] = {
             "label": row.get("shipLabel", {}).get("value", qid),
@@ -221,9 +224,14 @@ def _canonicalize(raw: dict) -> dict:
     }
 
 
-def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool]:
-    """Fetch ships from Wikidata. Returns (ships, changed) -- changed is False
-    if the freshly-fetched raw result is identical to what's cached on disk."""
+def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool, dict]:
+    """Fetch ships from Wikidata. Returns (ships, changed, raw) -- changed is False
+    if the freshly-fetched raw result is identical to what's cached on disk, and raw
+    is the canonicalized SPARQL result the caller should persist to the cache file
+    (see the module-level cache helper) once it has successfully committed the
+    corresponding output. This function does not touch the cache file itself, so a
+    caller that dies before committing its output won't leave a cache that falsely
+    claims the output is current."""
     candidates_result = run_sparql_query(build_candidates_query())
     candidate_rows = candidates_result["results"]["bindings"]
     ship_qids = sorted({_qid_from_uri(row["ship"]["value"]) for row in candidate_rows})
@@ -236,10 +244,8 @@ def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool]:
 
     cached = load_cache(cache_path)
     changed = raw != cached
-    if changed:
-        save_cache(cache_path, raw)
 
     ships = parse_candidates(raw["candidates"])
     attach_events(ships, raw["events"])
     attach_armament(ships, raw["armament"])
-    return to_ships(ships), changed
+    return to_ships(ships), changed, raw
