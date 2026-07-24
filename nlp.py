@@ -1,84 +1,126 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""Parse ships.csv notes into structured ship events."""
 
-import re
-from pprint import pprint
+import argparse
+import csv
 import logging
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Tuple
+
+logger = logging.getLogger("NLP")
+
+FINAL_EVENT_TEXTS = frozenset({
+    "sunk by the Luftwaffe",
+    "burnt and broken up",
+    "cancelled",
+    "destroyed by fire",
+    "broken up",
+    "sold",
+    "scuttled",
+    "foundered",
+    "hulked",
+    "sold for breaking",
+    "wreck sold for breaking",
+})
+
+EVENT_RE = re.compile(r"(.*) ?([\d]{4})(-\d+)? ?\[?.*\]?$")
+UNKNOWN_YEAR_MARKERS = frozenset({"?", "-"})
 
 
-class ShipEvent(object):
-	def __init__(self, year, text):
-		self.year = year
-		self.text = text
+@dataclass
+class ShipEvent:
+    year: int
+    text: str
 
-	def is_final(self):
-		return self.text in ['sunk by the Luftwaffe',
-						'burnt and broken up',
-						'cancelled',
-						'destroyed by fire',
-						'broken up',
-						'sold',
-						'scuttled',
-						'foundered',
-						'hulked',
-						'sold for breaking',
-						'wreck sold for breaking']
+    def is_final(self) -> bool:
+        return self.text in FINAL_EVENT_TEXTS
 
-	def __str__(self):
-		return "\t{}: {}".format(self.year, self.text)
+    def __str__(self) -> str:
+        return f"\t{self.year}: {self.text}"
 
-class Ship(object):
-	def __init__(self, ship_id, text):
-		self.id = ship_id
-		self.events=[]
-		self.notes = []
-		self.end_year = 9999
-		self.end_reason = ""
-		(self.start_year, self.name, self.guns, self.rating,self.other) = text.split(",")
-		if self.start_year in ['?','-']:
-			self.start_year = 9999
-		else:
-			self.start_year = int(self.start_year)
-		self.events = self.get_events(self.other)
-		self.notes = ". ".join(self.notes)
-		self.other = None
-		self.text = None
 
-	def get_events(self, text):
-		events = []
-		text = text.replace(";",".")
-		clauses = text.split(".")
-		for c in clauses:
-			clause = c.strip()
-			#m = re.match("(.*) ([\d-]+)( \[[0-9\[\]]\])?$",c)
-			m = re.match("(.*) ?([\d]{4})(-\d+)? ?\[?.*\]?$",c)
-			if m:
-				ctext,cyear,_ = m.groups()
-				event = ShipEvent(int(cyear), ctext.strip())
-				events.append(event)
-				if event.is_final():
-					self.end_year = event.year
-					self.end_reason = event.text
-			else:
-				if c[0:2]=="ex-":
-					ex = c[3:]
-				else:				
-					self.notes.append(clause)
-		return events
+@dataclass
+class Ship:
+    id: int
+    name: str
+    guns: str
+    rating: str
+    start_year: int
+    end_year: int = 9999
+    end_reason: str = ""
+    notes: str = ""
+    events: List[ShipEvent] = field(default_factory=list)
 
-	def __str__(self):
-		return "[{:4}] {} ({}, {}g)".format(self.id, self.name, self.start_year, self.guns)
+    def __str__(self) -> str:
+        return f"[{self.id:4}] {self.name} ({self.start_year}, {self.guns}g)"
 
-if __name__ == '__main__':
-	logger = logging.getLogger("NLP")
-	logging.basicConfig(level=logging.INFO)
 
-	with open("ships.csv", "rb") as f:
-		ship_id = 0
-		for line in f.readlines()[1:]:     # [1:] skips the header line in the csv
-			ship_id = ship_id + 1
-			ship = Ship(ship_id, line)
+def parse_events(text: str) -> Tuple[List[ShipEvent], str, int, str]:
+    events: List[ShipEvent] = []
+    notes: List[str] = []
+    end_year = 9999
+    end_reason = ""
 
-			logger.info(ship)
-			logger.debug(ship.notes)
-			for e in ship.events:
-				logger.debug(e)
+    text = text.replace(";", ".")
+    for raw_clause in text.split("."):
+        clause = raw_clause.strip()
+        match = EVENT_RE.match(raw_clause)
+        if match:
+            event_text, event_year, _ = match.groups()
+            event = ShipEvent(int(event_year), event_text.strip())
+            events.append(event)
+            if event.is_final():
+                end_year = event.year
+                end_reason = event.text
+        elif raw_clause[0:2] != "ex-":
+            notes.append(clause)
+
+    return events, ". ".join(notes), end_year, end_reason
+
+
+def parse_ship(ship_id: int, row: dict) -> Ship:
+    raw_start_year = row["year_launched"]
+    start_year = 9999 if raw_start_year in UNKNOWN_YEAR_MARKERS else int(raw_start_year)
+
+    events, notes, end_year, end_reason = parse_events(row["notes"])
+
+    return Ship(
+        id=ship_id,
+        name=row["name"],
+        guns=row["guns"],
+        rating=row["rating"],
+        start_year=start_year,
+        end_year=end_year,
+        end_reason=end_reason,
+        notes=notes,
+        events=events,
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "input",
+        nargs="?",
+        default=Path("ships.csv"),
+        type=Path,
+        help="ships.csv dataset to parse (default: %(default)s)",
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+
+    with args.input.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for ship_id, row in enumerate(reader, start=1):
+            ship = parse_ship(ship_id, row)
+            logger.info(ship)
+            logger.debug(ship.notes)
+            for event in ship.events:
+                logger.debug(event)
+
+
+if __name__ == "__main__":
+    main()
