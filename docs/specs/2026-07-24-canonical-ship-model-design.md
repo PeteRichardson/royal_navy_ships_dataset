@@ -8,9 +8,9 @@ Before implementing it, three new ideas surfaced that materially change or deepe
 
 1. **Dynamic Wikidata ingest** — the current `genships.py`/`wikipedia_ship_list.txt` pipeline stage parses a Wikipedia article that was hand-copied into the repo years ago and has since drifted out of sync (see PR #8, which found `ships.csv` had been stale relative to its own source file since 2018). Rather than maintaining a static committed text file, pull live data from Wikidata via SPARQL instead.
 2. **Learn from existing ship data models** — before locking in field names/structure for the canonical `Ship` model, review how Wikidata, threedecks.org, and The National Archives (UK) model ship data, particularly how they each handle a ship being renamed during its career.
-3. **Future graph database (Ships/Ports/People)** — a much larger, separate feature. This is explicitly **out of scope** for this design; it's deferred to a new, not-yet-filed issue #7 that will depend on this work, to be brainstormed separately.
+3. **Future graph database (Ships/Ports/People)** — a much larger, separate feature. This is explicitly **out of scope** for this design; it's deferred to issue #9, which depends on this work and will be brainstormed separately.
 
-This document supersedes issue #3's originally filed scope on the points below; issue #3's GitHub body will be updated to match after this design is approved.
+This document supersedes issue #3's originally filed scope on the points below; issue #3's GitHub body has been updated to match.
 
 ## Research findings (informing the model below)
 
@@ -57,11 +57,11 @@ Replaces today's flat `nlp.py` `Ship` dataclass (which has a single fixed `name`
 ## Explicitly out of scope
 
 - CSV export / export-adapter abstraction (dropped per above; can be revisited later if a concrete need arises).
-- The Ships/Ports/People graph database idea — deferred to a new issue #7, to be brainstormed separately once this canonical model exists.
+- The Ships/Ports/People graph database idea — deferred to issue #9, to be brainstormed separately once this canonical model exists.
 - Implementing issue #4's or #6's actual matching heuristics — only the interface they'll use is defined here.
 - A National Archives (UK) source adapter — not currently a filed issue; the `external_ids` design leaves room for one later.
 
-## Follow-up actions (not part of this design doc's content, but required before implementation starts)
+## Follow-up actions (completed)
 
-1. Update the GitHub issue #3 body to reflect this revised scope (replacing the CSV-export acceptance criteria, adding the Wikidata-adapter and canonical-model details above).
-2. File a new issue #7 for the future Ships/Ports graph database idea, noting its dependency on this work, without designing it yet.
+1. ~~Update the GitHub issue #3 body to reflect this revised scope~~ — done, see [issue #3](https://github.com/PeteRichardson/royal_navy_ships_dataset/issues/3).
+2. ~~File a new issue for the future Ships/Ports graph database idea~~ — done, see [issue #9](https://github.com/PeteRichardson/royal_navy_ships_dataset/issues/9).
