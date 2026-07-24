@@ -29,7 +29,7 @@ year_launched,name,guns,rating,notes
 1674,Harwich,66,Third,wrecked 1691.
 1674,Royal Oak,70,Third,rebuilt 1713.
 1675,Defiance,64,Third,rebuilt 1695.
-1674,Arms of Rotterdam,60,Third,a prize captured from the Dutch. hulked 1675. broken up 1703.
+1674,Arms of Rotterdam,60,Third,a prize captured from the Dutch.  hulked 1675.  broken up 1703.
 1665,West Friesland,54,Fourth,a prize.  Westfriesland.  captured from the Dutch.  sold 1667.
 1665,Seven Oaks,52,Fourth,a prize.  Zevenwolden.  captured from the Dutch.  retaken by them 1666.
 1665,Charles V,52,Fourth,a prize.  Carolus Quintus.  captured from the Dutch.  burned by them 1667.
@@ -453,7 +453,7 @@ year_launched,name,guns,rating,notes
 1790,Boyne,98,Second,caught fire by accident and blew up at Spithead 1795[6]
 1794,Prince of Wales,98,Second,broken up 1822.
 1793,Caesar,80,Third,1814 hulked – used as army depot at Portsmouth.  broken up 1821
-1757,Dublin,74,Third,the first British "74". Broken up 1784
+1757,Dublin,74,Third,"the first British ""74"". Broken up 1784"
 1757,Norfolk,74,Third,broken up 1774
 1758,Lenox,74,Third,scuttled 1784
 1759,Mars,74,Third,sold 1784
@@ -603,7 +603,7 @@ year_launched,name,guns,rating,notes
 1782,Cato,50,Fourth,disappeared 1782
 1782,Trusty,50,Fourth,broken up 1815
 1781,Rotterdam,50,Fourth,c. 1781. ex-Dutch.   sold 1806
-1782,Caesar,74,Fourth,c. 1782. ex-French Cesar.  captured. Blew up 1782
+1782,Caesar,74,Fourth,c. 1782. ex-French César.  capturedBlew up 1782
 1808,Caledonia,120,First,renamed Dreadnought.  broken up 1875
 1820,Britannia,120,First,broken up 1869
 1823,Prince Regent,120,First,converted to screw.  broken up 1873
@@ -761,7 +761,7 @@ year_launched,name,guns,rating,notes
 1789,Tonnant,80,Fourth,ex-French captured 1 August 1798.  broken up 1821
 1794,Spartiate,74,Fourth,ex-French Spartiate.  sheer hulk 1842.  broken up 1857
 1794,Donegal,76,Fourth,ex-French Hoche captured 12 October 1798.  broken up 1845
-1754,Guerrier,74,Fourth,ex-French Guerriere.  captured 2 August 1798.  broken up 1810.
+1754,Guerrier,74,Fourth,ex-French Guerrière.  captured 2 August 1798.  broken up 1810.
 1769,San Nicolas,80,Fourth,ex-Spanish.  captured Battle of Cape St Vincent (1797).  prison ship 1798.  sold 1814.
 1783,San Josef,110,Fourth,ex-Spanish.  captured Battle of Cape St Vincent (1797).  training ship by 1837.  broken up 1849 [22]
 1788,Duquesne,74,Unknown,ex-French Le Duquesne.  captured 25 July 1803.  stranded 1804.  broken up 1805 [23]
