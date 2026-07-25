@@ -112,13 +112,23 @@ def clean_value(value: str) -> Optional[str]:
     if value.startswith(RESOURCE_PREFIX):
         text = label_from_resource_uri(value)
     else:
-        text = TEMPLATE_RE.sub(" ", value)
+        text = value
+        for _ in range(5):
+            stripped = TEMPLATE_RE.sub(" ", text)
+            if stripped == text:
+                break
+            text = stripped
         text = WIKILINK_RE.sub(lambda match: match.group(1), text)
         text = BULLET_RE.sub("", text)
         text = text.replace("\n", "; ")
     text = WHITESPACE_RE.sub(" ", text).strip()
     text = SEPARATOR_RE.sub("; ", text).strip("; ").strip()
-    if not text or not ALNUM_RE.search(text) or JUNK_DATE_RE.match(text):
+    if (
+        not text
+        or not ALNUM_RE.search(text)
+        or JUNK_DATE_RE.match(text)
+        or any(marker in text for marker in ("{{", "}}", "[[", "]]"))
+    ):
         return None
     return text
 
