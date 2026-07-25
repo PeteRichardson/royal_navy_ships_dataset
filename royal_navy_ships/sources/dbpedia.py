@@ -140,7 +140,7 @@ def extract_gun_count(armament: str) -> Optional[str]:
     comprising: ..."). Summing the per-deck "24 x 9-pounder" multipliers is
     deliberately not attempted: many entries cover several eras or navies
     ("As built: ... From 1780: ...", "Royal Navy ... Citoyen ..."), so a naive
-    sum would silently double-count. Expect a total for roughly a quarter of
+    sum would silently double-count. Expect a total for roughly half of
     matched ships; the full text is always kept in `armament` regardless.
     """
     if PLAIN_INT_RE.match(armament):
