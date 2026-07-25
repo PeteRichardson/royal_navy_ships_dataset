@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 
+from royal_navy_ships import cache
 from royal_navy_ships.sources import wikidata
 
 logger = logging.getLogger("pipeline")
@@ -45,7 +46,7 @@ def main() -> None:
     logger.info("Wrote %d ships to %s", len(ships), args.output)
 
     if changed:
-        wikidata.save_cache(wikidata.CACHE_PATH, raw)
+        cache.save(wikidata.CACHE_PATH, raw)
 
 
 if __name__ == "__main__":

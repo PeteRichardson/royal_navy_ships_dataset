@@ -1,21 +1,16 @@
 """Wikidata SPARQL source adapter: fetch Royal Navy sailing-ship data."""
 
-import json
 import logging
-import os
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
+from royal_navy_ships import cache
 from royal_navy_ships.model import Ship, ShipEvent, ShipName, new_ship_id
+from royal_navy_ships.sources import sparql
 
 logger = logging.getLogger("wikidata")
 
 SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
-USER_AGENT = "royal-navy-ships-dataset/0.1 (https://github.com/PeteRichardson/royal_navy_ships_dataset)"
 
 ROYAL_NAVY_QID = "Q172771"
 
@@ -33,27 +28,6 @@ RATING_CLASS_QIDS: Dict[str, str] = {
 CHUNK_SIZE = 200
 
 CACHE_PATH = Path(".cache/wikidata_raw.json")
-
-
-def run_sparql_query(query: str, retries: int = 3, backoff_seconds: float = 2.0) -> dict:
-    data = urllib.parse.urlencode({"query": query, "format": "json"}).encode("utf-8")
-    request = urllib.request.Request(
-        SPARQL_ENDPOINT,
-        data=data,
-        headers={"Accept": "application/sparql-results+json", "User-Agent": USER_AGENT},
-        method="POST",
-    )
-    last_error: Optional[Exception] = None
-    for attempt in range(1, retries + 1):
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last_error = exc
-            logger.warning("SPARQL query failed (attempt %d/%d): %s", attempt, retries, exc)
-            if attempt < retries:
-                time.sleep(backoff_seconds * attempt)
-    raise RuntimeError(f"SPARQL query failed after {retries} attempts") from last_error
 
 
 def build_candidates_query() -> str:
@@ -93,23 +67,18 @@ def build_armament_query(ship_qids: List[str]) -> str:
     """
 
 
-def _chunked(items: List[str], size: int) -> Iterator[List[str]]:
-    for i in range(0, len(items), size):
-        yield items[i : i + size]
-
-
 def fetch_events(ship_qids: List[str]) -> List[dict]:
     rows: List[dict] = []
-    for chunk in _chunked(ship_qids, CHUNK_SIZE):
-        result = run_sparql_query(build_events_query(chunk))
+    for chunk in sparql.chunked(ship_qids, CHUNK_SIZE):
+        result = sparql.run_query(SPARQL_ENDPOINT, build_events_query(chunk))
         rows.extend(result["results"]["bindings"])
     return rows
 
 
 def fetch_armament(ship_qids: List[str]) -> List[dict]:
     rows: List[dict] = []
-    for chunk in _chunked(ship_qids, CHUNK_SIZE):
-        result = run_sparql_query(build_armament_query(chunk))
+    for chunk in sparql.chunked(ship_qids, CHUNK_SIZE):
+        result = sparql.run_query(SPARQL_ENDPOINT, build_armament_query(chunk))
         rows.extend(result["results"]["bindings"])
     return rows
 
@@ -196,34 +165,6 @@ def to_ships(ships: Dict[str, dict]) -> List[Ship]:
     return result
 
 
-def load_cache(cache_path: Path) -> Optional[dict]:
-    if not cache_path.exists():
-        return None
-    try:
-        with cache_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        logger.warning("cache file %s is unreadable or corrupt; ignoring it", cache_path)
-        return None
-
-
-def save_cache(cache_path: Path, raw: dict) -> None:
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = cache_path.with_suffix(".json.tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(raw, f, indent=2, sort_keys=True)
-    os.replace(tmp_path, cache_path)
-
-
-def _canonicalize(raw: dict) -> dict:
-    """Sort each query's binding rows into a stable order so that comparing
-    two raw results is insensitive to Wikidata's nondeterministic row order."""
-    return {
-        key: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True))
-        for key, rows in raw.items()
-    }
-
-
 def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool, dict]:
     """Fetch ships from Wikidata. Returns (ships, changed, raw) -- changed is False
     if the freshly-fetched raw result is identical to what's cached on disk, and raw
@@ -232,17 +173,17 @@ def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool, dict]:
     corresponding output. This function does not touch the cache file itself, so a
     caller that dies before committing its output won't leave a cache that falsely
     claims the output is current."""
-    candidates_result = run_sparql_query(build_candidates_query())
+    candidates_result = sparql.run_query(SPARQL_ENDPOINT, build_candidates_query())
     candidate_rows = candidates_result["results"]["bindings"]
     ship_qids = sorted({_qid_from_uri(row["ship"]["value"]) for row in candidate_rows})
 
-    raw = _canonicalize({
+    raw = cache.canonicalize({
         "candidates": candidate_rows,
         "events": fetch_events(ship_qids),
         "armament": fetch_armament(ship_qids),
     })
 
-    cached = load_cache(cache_path)
+    cached = cache.load(cache_path)
     changed = raw != cached
 
     ships = parse_candidates(raw["candidates"])
