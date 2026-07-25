@@ -151,17 +151,16 @@ def to_ships(ships: Dict[str, dict]) -> List[Ship]:
         # was found during design to sometimes undercount well-documented ships
         # (e.g. HMS Victory) -- treat this sum as best-effort, not authoritative.
         guns = str(sum(data["guns_counts"])) if data["guns_counts"] else None
-        result.append(
-            Ship(
-                id=new_ship_id(),
-                names=build_names(data["label"], data["events"]),
-                guns=guns,
-                rating=data["rating"],
-                notes=data["description"],
-                events=data["events"],
-                external_ids={"wikidata": qid},
-            )
+        ship = Ship(
+            id=new_ship_id(),
+            names=build_names(data["label"], data["events"]),
+            events=data["events"],
+            external_ids={"wikidata": qid},
         )
+        ship.set_field("guns", guns, "wikidata")
+        ship.set_field("rating", data["rating"], "wikidata")
+        ship.set_field("notes", data["description"], "wikidata")
+        result.append(ship)
     return result
 
 
