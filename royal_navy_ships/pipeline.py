@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from royal_navy_ships import cache
-from royal_navy_ships.sources import wikidata
+from royal_navy_ships.sources import dbpedia, wikidata
 
 logger = logging.getLogger("pipeline")
 
@@ -26,14 +26,23 @@ def main() -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Regenerate output even if the Wikidata result is unchanged from the cache",
+        help="Regenerate output even if no source has changed since the last run",
     )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
 
-    ships, changed, raw = wikidata.fetch_ships()
-    logger.info("Fetched %d ships from Wikidata (changed since last cache: %s)", len(ships), changed)
+    ships, wikidata_changed, wikidata_raw = wikidata.fetch_ships()
+    logger.info(
+        "Fetched %d ships from Wikidata (changed since last cache: %s)",
+        len(ships),
+        wikidata_changed,
+    )
+
+    dbpedia_changed, dbpedia_raw = dbpedia.fetch_enrichment(ships)
+    logger.info("DBpedia changed since last cache: %s", dbpedia_changed)
+
+    changed = wikidata_changed or dbpedia_changed
 
     if not changed and args.output.exists() and not args.force:
         logger.info("No change detected and output already exists; skipping regeneration. Use --force to override.")
@@ -45,8 +54,10 @@ def main() -> None:
     os.replace(tmp_path, args.output)
     logger.info("Wrote %d ships to %s", len(ships), args.output)
 
-    if changed:
-        cache.save(wikidata.CACHE_PATH, raw)
+    if wikidata_changed:
+        cache.save(wikidata.CACHE_PATH, wikidata_raw)
+    if dbpedia_changed:
+        cache.save(dbpedia.CACHE_PATH, dbpedia_raw)
 
 
 if __name__ == "__main__":
