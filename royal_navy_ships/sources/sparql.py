@@ -26,7 +26,7 @@ def run_query(endpoint: str, query: str, retries: int = 3, backoff_seconds: floa
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = exc
             logger.warning(
                 "SPARQL query to %s failed (attempt %d/%d): %s", endpoint, attempt, retries, exc
