@@ -42,7 +42,7 @@ Issue #4 ("Complete the DBpedia integration for richer per-ship data") was filed
 - The skip decision considers both caches; `--force` still overrides.
 - **Delete `getships.py` and `ship.py`** — the last two legacy scripts, obsoleted by the QID join. This completes the repo's migration to the package architecture.
 - CLAUDE.md and README updated: the "two overlapping DBpedia scripts" gotcha disappears; data-shape docs gain the new fields + provenance/conflicts maps.
-- Runtime: roughly doubles the pipeline's request count (~24 total); still a couple of minutes.
+- Runtime: adds ~12 chunked requests to the existing ~25 (candidates + events + armament); still a couple of minutes.
 
 ## Out of scope
 
