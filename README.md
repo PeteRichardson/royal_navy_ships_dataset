@@ -2,7 +2,8 @@
 
 A dataset (and the pipeline that generates it) of Royal Navy sailing-era ships — the
 rating classes first-rate through sixth-rate, plus sloops and gun-brigs — sourced live
-from [Wikidata](https://www.wikidata.org/).
+from [Wikidata](https://www.wikidata.org/) and enriched from
+[DBpedia](https://www.dbpedia.org/).
 
 ## Getting the data
 
@@ -14,8 +15,8 @@ from [Wikidata](https://www.wikidata.org/).
   python3 -m royal_navy_ships.pipeline
   ```
 
-  Requires Python 3 and a network connection (queries Wikidata's public SPARQL
-  endpoint). No third-party dependencies.
+  Requires Python 3 and a network connection (queries the public Wikidata and
+  DBpedia SPARQL endpoints). No third-party dependencies.
 
 `ships.json` is gitignored -- it isn't tracked in git history, only published as a
 release artifact.
@@ -25,16 +26,25 @@ release artifact.
 `ships.json` is a JSON array with one object per ship:
 
 - `id` — a stable, dataset-internal identifier (a UUID), independent of any source.
-- `external_ids` — identifiers in other systems, e.g. the Wikidata QID.
+- `external_ids` — identifiers in other systems, e.g. `{"wikidata": "Q213958",
+  "dbpedia": "HMS_Victory"}`.
 - `names` — a time-qualified list of names, since ships were frequently renamed or
   rebuilt under a new name.
 - `events` — a timeline of significant events (launched, renamed, wrecked, broken up,
   etc.), each optionally dated.
-- `guns` — gun count, where Wikidata records it. Sparse and best-effort, not
-  authoritative -- absent for many ships and known to undercount even well-documented
-  ones (e.g. HMS Victory).
 - `rating` — the sailing-ship rating class (`First` .. `Sixth`, `Sloop`, `Gun-brig`).
+- `guns` — gun count. Recorded only where a source states a total outright; the
+  per-deck breakdown is not summed, because many descriptions span several eras or
+  navies and would double-count. Absent for many ships.
+- `armament` — the full armament description, usually a per-deck breakdown.
+- `tonnage`, `length`, `beam`, `complement`, `sail_plan`, `builder`, `fate` —
+  descriptive detail, largely from Wikipedia infoboxes via DBpedia. Present for most
+  ships that have a Wikipedia article.
 - `notes` — a short free-text description.
+- `field_sources` — which source supplied each field above, e.g.
+  `{"rating": "wikidata", "tonnage": "dbpedia"}`.
+- `conflicts` — values from other sources that disagree with the canonical answer.
+  Kept rather than discarded, so you can judge for yourself.
 
 An abbreviated example, HMS *Implacable* (originally the French *Duguay-Trouin*,
 captured in 1805, later renamed *Foudroyant*):
@@ -55,8 +65,17 @@ captured in 1805, later renamed *Foudroyant*):
     { "description": "scuttled", "date": "1949-12-02", "named_as": null }
   ],
   "guns": "74",
+  "armament": "Gun deck: 28 × 32-pounder guns; Upper gun deck: 30 × 18-pounder guns",
+  "tonnage": "1885",
+  "length": "52.4",
+  "complement": "640",
+  "sail_plan": "Full-rigged ship",
+  "builder": "Rochefort",
+  "fate": "Scuttled off Portsmouth, 2 December 1949",
   "rating": "Third",
-  "notes": "French Téméraire-class ship of the line, captured by the Royal Navy at Trafalgar."
+  "notes": "French Téméraire-class ship of the line, captured by the Royal Navy at Trafalgar.",
+  "field_sources": { "rating": "wikidata", "tonnage": "dbpedia", "guns": "dbpedia" },
+  "conflicts": {}
 }
 ```
 
@@ -69,3 +88,15 @@ The dataset holds roughly 2,270 ships as of writing. It was formerly a hand-scra
 CSV built from a single Wikipedia list; that approach was replaced in 2026 by the
 live Wikidata pipeline in this repo (see
 [issue #3](https://github.com/PeteRichardson/royal_navy_ships_dataset/issues/3)).
+
+## Sources
+
+| Source | Contributes |
+| --- | --- |
+| [Wikidata](https://query.wikidata.org) | The ship list itself (rating classes + Royal Navy operator), name histories, and the event timeline |
+| [DBpedia](https://dbpedia.org) | Wikipedia infobox detail — armament, tonnage, dimensions, complement, sail plan, builder, fate — joined on the Wikidata QID |
+
+Roughly three quarters of the fleet has an English Wikipedia article and therefore a
+DBpedia record; the remainder — mostly small sloops and gun-brigs — carries Wikidata
+data only. Where two sources disagree, the canonical field keeps one answer and the
+other is preserved in `conflicts`.

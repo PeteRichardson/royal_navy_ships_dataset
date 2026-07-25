@@ -4,21 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A Python package (`royal_navy_ships/`) that queries Wikidata's public SPARQL endpoint for Royal Navy sailing ships and generates a canonical, gitignored `ships.json` dataset (published via GitHub Releases, not tracked in git history). There is still no build system or test suite. Run the pipeline via `python3 -m royal_navy_ships.pipeline` from the repo root.
+A Python package (`royal_navy_ships/`) that queries the public Wikidata and DBpedia SPARQL endpoints for Royal Navy sailing ships and generates a canonical, gitignored `ships.json` dataset (published via GitHub Releases, not tracked in git history). There is still no build system or test suite. Run the pipeline via `python3 -m royal_navy_ships.pipeline` from the repo root.
 
 ## Data pipeline
 
 - **`royal_navy_ships/model.py`** — canonical `Ship`/`ShipName`/`ShipEvent` dataclasses shared by all source adapters. A ship's name is a time-qualified list (`names`), not a single field, since ships were often renamed; `start_year`/`end_year`/`end_reason` are derived properties from the event timeline, not stored fields.
-- **`royal_navy_ships/sources/wikidata.py`** — the (currently only) source adapter. Queries Wikidata's public SPARQL endpoint live for Royal Navy ships in the sailing-ship rating classes (first-rate through sixth-rate, sloop-of-war, gun-brig -- see `RATING_CLASS_QIDS`), not a hardcoded date range. `fetch_ships()` compares the freshly-fetched result against the cache at `.cache/wikidata_raw.json` (gitignored) and reports whether it changed, but does not save the cache itself.
+- **`royal_navy_ships/sources/sparql.py` and `royal_navy_ships/cache.py`** — shared plumbing every adapter uses: a SPARQL-over-HTTP client with retry, and raw-result load/save/canonicalize. Adapters never write their own cache; `pipeline.py` commits caches only after the dataset write succeeds.
+- **`royal_navy_ships/sources/wikidata.py`** — the primary source adapter, producing the ship list itself. Queries Wikidata's public SPARQL endpoint live for Royal Navy ships in the sailing-ship rating classes (first-rate through sixth-rate, sloop-of-war, gun-brig -- see `RATING_CLASS_QIDS`), not a hardcoded date range. `fetch_ships()` compares the freshly-fetched result against the cache at `.cache/wikidata_raw.json` (gitignored) and reports whether it changed, but does not save the cache itself.
+- **`royal_navy_ships/sources/dbpedia.py`** — enrichment adapter. Joins DBpedia resources to ships via `owl:sameAs` on the Wikidata QID each record already carries (never by name), and merges Wikipedia infobox fields -- armament, tonnage, length, beam, complement, sail plan, builder, fate -- through `Ship.set_field`. Caches at `.cache/dbpedia_raw.json`, same contract as above.
 - **`royal_navy_ships/pipeline.py`** — CLI entry point. Run via `python3 -m royal_navy_ships.pipeline` from the repo root. Writes `ships.json` (gitignored -- the dataset is published via GitHub Releases, not tracked in git history) atomically, then commits the new cache -- in that order, so a failed/killed output write never leaves a cache that falsely claims the output is current. Skips regeneration if nothing changed since the last run.
 
-No third-party dependencies -- the Wikidata client uses `urllib.request` from the standard library.
+No third-party dependencies -- the SPARQL client uses `urllib.request` from the standard library.
 
-`getships.py` and `ship.py` (DBpedia enrichment, issue #4) are unaffected by this pipeline and still exist as separate, not-yet-wired-in scripts.
+Every source adapter has the same shape: build query -> fetch rows -> parse/clean -> merge into canonical `Ship` records via `set_field`. Adding a source means writing one adapter and calling it from `pipeline.py`.
 
 ## Key gotchas
 
 - **Wikidata's armament data (`P520`/`P1114`) is very sparse.** `Ship.guns` is frequently `None`; where present, treat it as best-effort, not authoritative -- it was found during design to undercount even well-documented ships like HMS Victory.
 - **A ship's `names` list is derived entirely from its Wikidata event timeline's `named_as` qualifiers** (`P1810` on `P793` significant-event statements), not from a separate name property. A ship with no tagged rename events gets a single `ShipName` from its current Wikidata label.
-- **`.cache/wikidata_raw.json` and `ships.json` are both gitignored.** Regenerate locally via `python3 -m royal_navy_ships.pipeline`; don't expect either to be present in a fresh checkout.
-- Two independent, overlapping DBpedia-enrichment implementations still exist (`getships.py` sync, `ship.py` async) -- neither is finished/wired into the pipeline. Check with the user which one (if either) they want extended before adding to both.
+- **Everything under `.cache/` and `ships.json` are gitignored.** Regenerate locally via `python3 -m royal_navy_ships.pipeline`; don't expect them in a fresh checkout.
+- **Canonical fields answer the question, not "who said what".** `Ship.set_field` gives the first non-empty value the canonical slot and records later disagreements in `conflicts`, with per-field attribution in `field_sources`. Never assign a mergeable field directly -- go through `set_field` so provenance stays complete.
+- **DBpedia values are raw Wikipedia infobox fragments and are frequently junk.** `dbp:shipFate` is a malformed `--MM-DD` date in roughly two thirds of cases; sail plans and builders arrive as resource URIs, not text. `clean_value` normalizes what it can and returns `None` for the rest -- junk must never reach a canonical field.
+- **`Ship.guns` is only recoverable for roughly half of DBpedia-matched ships.** Armament is usually a per-deck breakdown; only a bare integer or an explicitly stated total is parsed. Summing the `24 × 9-pounder` multipliers is deliberately avoided because many entries span several eras or navies and would double-count.
+- **There is no draught data in DBpedia** (`dbp:shipDraught`, `dbp:shipDraft`, `dbo:draft` are all empty for this fleet), despite the design spec listing the field.
