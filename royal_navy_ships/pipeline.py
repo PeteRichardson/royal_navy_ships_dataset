@@ -39,7 +39,14 @@ def main() -> None:
         wikidata_changed,
     )
 
-    dbpedia_changed, dbpedia_raw = dbpedia.fetch_enrichment(ships)
+    try:
+        dbpedia_changed, dbpedia_raw = dbpedia.fetch_enrichment(ships)
+    except RuntimeError:
+        logger.exception("DBpedia enrichment failed; falling back to the cached result")
+        cached = cache.load(dbpedia.CACHE_PATH)
+        dbpedia_changed, dbpedia_raw = False, cached or {"properties": []}
+        if cached:
+            dbpedia.enrich(ships, dbpedia.index_rows(cached["properties"]))
     logger.info("DBpedia changed since last cache: %s", dbpedia_changed)
 
     changed = wikidata_changed or dbpedia_changed

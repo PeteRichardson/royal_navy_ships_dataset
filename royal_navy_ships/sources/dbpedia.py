@@ -35,12 +35,18 @@ RESOURCE_PREFIX = "http://dbpedia.org/resource/"
 # properties are typed and already normalized, so they are preferred where they
 # exist; `dbp:` properties are raw infobox fragments and need cleaning.
 #
+# Fallbacks must agree on unit and quantity, not just "seem related": mixing
+# dbo:length (metres) with dbp:shipLength (feet), or builder's-measure tonnage
+# with displacement tonnage, would silently conflate incompatible numbers into
+# one field. Where no single property is both well-populated and unambiguous,
+# the field draws from exactly one property rather than risk that.
+#
 # There is deliberately no draught entry: dbp:shipDraught, dbp:shipDraft and
 # dbo:draft all returned zero rows when this adapter was designed.
 FIELD_PROPERTIES: Dict[str, Tuple[str, ...]] = {
     "armament": (DBP + "shipArmament",),
-    "tonnage": (DBP + "shipTonsBurthen", DBP + "shipDisplacement"),
-    "length": (DBO + "length", DBP + "shipLength"),
+    "tonnage": (DBP + "shipTonsBurthen",),
+    "length": (DBO + "length",),
     "beam": (DBO + "shipBeam",),
     "complement": (DBP + "shipComplement",),
     "sail_plan": (DBP + "shipSailPlan",),
@@ -94,6 +100,12 @@ JUNK_DATE_RE = re.compile(r"^-{2}\d{2}-\d{2}$")
 
 PLAIN_INT_RE = re.compile(r"^\d{1,3}$")
 STATED_TOTAL_RE = re.compile(r"^(\d{1,3})\s+guns?\b", re.IGNORECASE)
+
+# Fields whose value is meaningless without a number. DBpedia sometimes emits
+# the infobox's label text with the figure missing entirely ("bm",
+# "Overall:; Keel:"), which is worse than absent data in a published dataset.
+NUMERIC_FIELDS = frozenset({"tonnage", "length", "beam", "complement", "guns"})
+DIGIT_RE = re.compile(r"\d")
 
 
 def label_from_resource_uri(uri: str) -> str:
@@ -182,12 +194,16 @@ def index_rows(rows: List[dict]) -> Dict[str, dict]:
 
 
 def enrich(ships: List[Ship], indexed: Dict[str, dict]) -> int:
-    """Merge DBpedia values into `ships` in place; returns how many were enriched.
+    """Merge DBpedia values into `ships` in place; returns how many ships had at
+    least one field actually populated (not merely matched to a resource).
 
     Where DBpedia offers several values for one field (a handful of ships list
     more than one builder or fate), the first in sorted order becomes the
     canonical answer and the rest are recorded through the same conflict
-    mechanism used across sources -- so nothing is silently discarded.
+    mechanism used across sources -- so nothing is silently discarded. Values
+    in `NUMERIC_FIELDS` that carry no digit at all (infobox label text with the
+    figure missing, e.g. "bm", "Overall:; Keel:") are dropped rather than
+    stored, since they are worse than absent data.
     """
     enriched = 0
     for ship in ships:
@@ -196,17 +212,33 @@ def enrich(ships: List[Ship], indexed: Dict[str, dict]) -> int:
         if entry is None:
             continue
         ship.external_ids["dbpedia"] = _resource_name(entry["resource"])
+        populated = False
         for field_name, props in FIELD_PROPERTIES.items():
             for prop in props:
                 values = entry["properties"].get(prop)
                 if not values:
                     continue
                 for value in values:
+                    if field_name in NUMERIC_FIELDS and not DIGIT_RE.search(value):
+                        continue
+                    before = getattr(ship, field_name)
                     ship.set_field(field_name, value, "dbpedia")
+                    if not before and getattr(ship, field_name):
+                        populated = True
                 break
-        if ship.armament:
-            ship.set_field("guns", extract_gun_count(ship.armament), "dbpedia")
-        enriched += 1
+        # Derived from this entry's own raw armament value, not the canonical
+        # `ship.armament` field, so DBpedia is only ever credited for guns it
+        # itself supplied -- even once another source can populate armament.
+        armament_values = entry["properties"].get(DBP + "shipArmament")
+        if armament_values:
+            guns = extract_gun_count(armament_values[0])
+            if guns:
+                before_guns = ship.guns
+                ship.set_field("guns", guns, "dbpedia")
+                if not before_guns and ship.guns:
+                    populated = True
+        if populated:
+            enriched += 1
     return enriched
 
 
@@ -232,5 +264,7 @@ def fetch_enrichment(
     changed = raw != cache.load(cache_path)
 
     enriched = enrich(ships, index_rows(raw["properties"]))
-    logger.info("Enriched %d of %d ships from DBpedia", enriched, len(ships))
+    logger.info(
+        "Populated at least one field from DBpedia for %d of %d ships", enriched, len(ships)
+    )
     return changed, raw

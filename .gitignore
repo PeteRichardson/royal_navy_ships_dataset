@@ -2,3 +2,4 @@ venv/
 *.log
 .cache/
 ships.json
+__pycache__/

@@ -52,7 +52,7 @@ captured in 1805, later renamed *Foudroyant*):
 ```json
 {
   "id": "f3b1c9a2-6e4d-4a1b-9c2e-7d5f8a0b1c2d",
-  "external_ids": { "wikidata": "Q63218" },
+  "external_ids": { "wikidata": "Q63218", "dbpedia": "HMS_Implacable_(1805)" },
   "names": [
     { "name": "Duguay-Trouin", "start_date": "1800-01-01", "end_date": "1805-11-04" },
     { "name": "HMS Implacable", "start_date": "1805-11-04", "end_date": "1855-01-01" },

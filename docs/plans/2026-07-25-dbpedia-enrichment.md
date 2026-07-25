@@ -32,7 +32,7 @@ All checked live against `https://dbpedia.org/sparql` on 2026-07-25, using a 60-
   - Multi-line infobox wikitext: `shipArmament` → `'*28 guns comprising:\n*Upperdeck: 24 × 9-pounder guns\n*Quarterdeck: 4 × 3-pounder guns'`.
 - **Junk is real and must be dropped, not stored.** `shipFate` is a malformed date fragment (`'--09-19'`, `'--05-23'`) in **40 of 65** observed values. Degenerate wikitext such as `'* ,\n*'` also occurs.
 - **Same-source multi-values occur** (of 60 ships: 8 have multiple `dbo:builder`, 5 multiple `shipClass`, 5 multiple `shipFate`, 4 multiple `dbp:shipBuilder`). These are handled by the conflict mechanism, not by picking arbitrarily and discarding.
-- **`guns` is only extractable for ~23% of matched ships** (3/60 plain integers + 11/60 explicitly stated totals such as `'*28 guns comprising:'`; 46/60 not extractable). Summing the per-deck `24 × 9-pounder` multipliers is deliberately not attempted — many entries span several eras or navies (`'*As built: ... *From 1780: ...'`, `'*Royal Navy ... *Citoyen ...'`), so a naive sum would silently double-count. A low yield here is expected, not a bug.
+- **`guns` is extractable for ~45% of matched ships** (measured across the full fleet: 748 of 1642; an early 60-ship sample under-measured this at ~23%). Summing the per-deck `24 × 9-pounder` multipliers is deliberately not attempted — many entries span several eras or navies (`'*As built: ... *From 1780: ...'`, `'*Royal Navy ... *Citoyen ...'`), so a naive sum would silently double-count. A moderate yield here is expected, not a bug.
 
 ## File Structure
 
