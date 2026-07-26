@@ -50,10 +50,12 @@ setup beyond a Python 3 checkout.
   descriptive detail, largely from Wikipedia infoboxes via DBpedia. Present for most
   ships that have a Wikipedia article.
 - `notes` — a short free-text description.
-- `field_sources` — which source supplied each field above, e.g.
-  `{"rating": "wikidata", "tonnage": "dbpedia"}`.
+- `field_sources` — which sources concur on each field above, as a list in the order
+  they were recorded, e.g. `{"rating": ["wikidata"], "builder": ["wikidata", "dbpedia"]}`.
+  More than one entry means the sources agree, not that the value is contested.
 - `conflicts` — values from other sources that disagree with the canonical answer.
-  Kept rather than discarded, so you can judge for yourself.
+  Kept rather than discarded, so you can judge for yourself. Each entry carries the
+  source that supplied it; see *Which value wins* below for how to read one.
 
 An abbreviated example, HMS *Implacable* (originally the French *Duguay-Trouin*,
 captured in 1805, later renamed *Foudroyant*):
@@ -83,13 +85,35 @@ captured in 1805, later renamed *Foudroyant*):
   "fate": "Scuttled off Portsmouth, 2 December 1949",
   "rating": "Third",
   "notes": "French Téméraire-class ship of the line, captured by the Royal Navy at Trafalgar.",
-  "field_sources": { "rating": "wikidata", "tonnage": "dbpedia", "guns": "dbpedia" },
+  "field_sources": {
+    "rating": ["wikidata"],
+    "tonnage": ["dbpedia"],
+    "guns": ["wikidata", "dbpedia"]
+  },
   "conflicts": {}
 }
 ```
 
 (Field values above are illustrative and abbreviated for readability; regenerate the
 dataset to see the current, complete records.)
+
+### Which value wins
+
+When two sources supply different values for the same field, the canonical slot goes
+to the higher-priority source — currently `wikidata` ahead of `dbpedia`, with
+hand-curated entries ahead of both — and the displaced value moves into `conflicts`.
+Priority is a declared policy, so the dataset does not depend on the order the
+pipeline runs its adapters in.
+
+`conflicts` covers two genuinely different situations, told apart by checking whether
+the entry's `source` also appears in `field_sources` for that field:
+
+- **source in `field_sources`** — that source agreed with the canonical value *and*
+  offered an additional one. Not a disagreement. This is what a Wikipedia infobox
+  listing two builders produces, and it accounts for every conflict entry in the
+  current dataset.
+- **source not in `field_sources`** — a real cross-source disagreement worth
+  adjudicating.
 
 ## Background
 
@@ -113,5 +137,5 @@ constrained to vessels dated before 1860.
 
 Roughly three quarters of the fleet has an English Wikipedia article and therefore a
 DBpedia record; the remainder — mostly small sloops and gun-brigs — carries Wikidata
-data only. Where two sources disagree, the canonical field keeps one answer and the
-other is preserved in `conflicts`.
+data only. Where two sources disagree, the higher-priority one keeps the canonical
+field and the other is preserved in `conflicts` — see [Which value wins](#which-value-wins).
