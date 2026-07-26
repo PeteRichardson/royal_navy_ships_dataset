@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from royal_navy_ships import cache
 from royal_navy_ships.model import Ship, ShipEvent, ShipName, ship_id
@@ -191,6 +191,13 @@ def attach_armament(ships: Dict[str, dict], rows: List[dict]) -> None:
 
 
 def build_names(label: str, events: List[ShipEvent]) -> List[ShipName]:
+    """The ship's name history, from naming events that carry a date.
+
+    An undated naming event cannot join the sequence: its position is
+    unknowable, and `Ship.current_name` returns `names[-1]`, so placing one
+    arbitrarily would make the current name arbitrary too. Those names are
+    recorded by `build_notes` instead, rather than being dropped.
+    """
     named_events = sorted(
         (e for e in events if e.named_as and e.date),
         key=lambda e: e.date,
@@ -205,6 +212,31 @@ def build_names(label: str, events: List[ShipEvent]) -> List[ShipName]:
     return names
 
 
+def undated_names(events: List[ShipEvent]) -> List[str]:
+    """Names from naming events with no usable date, in first-seen order."""
+    found: List[str] = []
+    for event in events:
+        if event.named_as and not event.date and event.named_as not in found:
+            found.append(event.named_as)
+    return found
+
+
+def build_notes(description: str, events: List[ShipEvent], known_names: Set[str]) -> str:
+    """`description`, plus any name the timeline records without a date.
+
+    Wikidata occasionally tags a `named_as` qualifier with no `P585`. Such a
+    name cannot be placed in `names` (see `build_names`), and dropping it
+    silently would lose a real former name with no indication it existed -- so
+    it is stated here, explicitly flagged as undated, where a reader can see
+    both the name and the gap. Names already in the sequence are not repeated.
+    """
+    extra = [name for name in undated_names(events) if name not in known_names]
+    if not extra:
+        return description
+    note = f"Also recorded as {', '.join(extra)}, with no date given for the change."
+    return f"{description} {note}".strip()
+
+
 def to_ships(ships: Dict[str, dict]) -> List[Ship]:
     result = []
     for qid, data in ships.items():
@@ -213,15 +245,20 @@ def to_ships(ships: Dict[str, dict]) -> List[Ship]:
         # (e.g. HMS Victory) -- treat this sum as best-effort, not authoritative.
         guns = str(sum(data["guns_counts"])) if data["guns_counts"] else None
         external_ids = {"wikidata": qid}
+        names = build_names(data["label"], data["events"])
         ship = Ship(
             id=ship_id(external_ids),
-            names=build_names(data["label"], data["events"]),
+            names=names,
             events=data["events"],
             external_ids=external_ids,
         )
         ship.set_field("guns", guns, "wikidata")
         ship.set_field("rating", data["rating"], "wikidata")
-        ship.set_field("notes", data["description"], "wikidata")
+        # Composed before the call, not appended after: `set_field` gives the
+        # canonical slot to the first non-empty value, so a second call for
+        # `notes` would be recorded as a conflict rather than extending it.
+        notes = build_notes(data["description"], data["events"], {n.name for n in names})
+        ship.set_field("notes", notes, "wikidata")
         result.append(ship)
     return result
 
