@@ -25,6 +25,31 @@ RATING_CLASS_QIDS: Dict[str, str] = {
     "Q130396697": "Gun-brig",
 }
 
+# Which rating to record when a ship carries several rating-class P31
+# statements -- about 10 do, typically because they were reclassified during
+# their career. Highest rate first; the two unrated classes rank below every
+# rate, and a sloop-of-war above a gun-brig. Declared explicitly rather than
+# read off RATING_CLASS_QIDS' insertion order, which happens to match today
+# but would silently decide the policy if either were reordered.
+RATING_PRIORITY: Tuple[str, ...] = (
+    "First",
+    "Second",
+    "Third",
+    "Fourth",
+    "Fifth",
+    "Sixth",
+    "Sloop",
+    "Gun-brig",
+)
+
+
+def rating_priority(rating: Optional[str]) -> int:
+    """Rank of `rating`, lower wins. Anything undeclared ranks last."""
+    try:
+        return RATING_PRIORITY.index(rating)
+    except ValueError:
+        return len(RATING_PRIORITY)
+
 # Two of the classes above are not era-bounded on Wikidata: the same
 # `sloop-of-war` QID covers 1790s sailing sloops and 1915 Acacia-class convoy
 # escorts, and `gun-brig` stayed in use into the steam era. Filtering by class
@@ -106,16 +131,22 @@ def parse_candidates(rows: List[dict]) -> Dict[str, dict]:
     ships: Dict[str, dict] = {}
     for row in rows:
         qid = _qid_from_uri(row["ship"]["value"])
+        rating = RATING_CLASS_QIDS.get(_qid_from_uri(row["class"]["value"]))
         if qid in ships:
-            # ship matched more than one rating class; rows arrive canonicalized (sorted
-            # by row JSON), so the pick is deterministic but has no historical meaning --
-            # revisit if rating priority matters
+            # The ship matched more than one rating class. Keep the highest
+            # rate rather than whichever row arrived first: rows are
+            # canonicalized by sorting on row JSON, so first-wins meant the
+            # lexicographically smallest class URI won -- which made Gun-brig
+            # (Q130396697) beat every Q89xxxx rate class. The rest of the
+            # record is identical across a ship's rows, so only the rating
+            # needs revisiting.
+            if rating_priority(rating) < rating_priority(ships[qid]["rating"]):
+                ships[qid]["rating"] = rating
             continue
-        class_qid = _qid_from_uri(row["class"]["value"])
         ships[qid] = {
             "label": row.get("shipLabel", {}).get("value", qid),
             "description": row.get("shipDescription", {}).get("value", ""),
-            "rating": RATING_CLASS_QIDS.get(class_qid),
+            "rating": rating,
             "events": [],
             "guns_counts": [],
         }

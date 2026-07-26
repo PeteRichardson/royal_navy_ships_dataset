@@ -45,6 +45,10 @@ setup beyond a Python 3 checkout.
 - `events` — a timeline of significant events (launched, renamed, wrecked, broken up,
   etc.), each optionally dated.
 - `rating` — the sailing-ship rating class (`First` .. `Sixth`, `Sloop`, `Gun-brig`).
+  A ship reclassified during its career can carry several on Wikidata; the highest
+  is recorded, so a vessel tagged both third-rate and gun-brig appears as `Third`.
+  The rating is not yet time-qualified, so a reclassification is not visible here —
+  check `events` for it.
 - `guns` — gun count. Recorded only where a source states a total outright; the
   per-deck breakdown is not summed, because many descriptions span several eras or
   navies and would double-count. Absent for many ships.
