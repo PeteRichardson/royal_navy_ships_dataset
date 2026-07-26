@@ -21,6 +21,15 @@ from [Wikidata](https://www.wikidata.org/) and enriched from
 `ships.json` is gitignored -- it isn't tracked in git history, only published as a
 release artifact.
 
+Run the tests with:
+
+```
+python3 -m unittest discover
+```
+
+They use the standard library's `unittest` and hit no network, so they need no
+setup beyond a Python 3 checkout.
+
 ## Data shape
 
 `ships.json` is a JSON array with one object per ship:
@@ -84,10 +93,16 @@ dataset to see the current, complete records.)
 
 ## Background
 
-The dataset holds roughly 2,270 ships as of writing. It was formerly a hand-scraped
+The dataset holds roughly 2,100 ships as of writing. It was formerly a hand-scraped
 CSV built from a single Wikipedia list; that approach was replaced in 2026 by the
 live Wikidata pipeline in this repo (see
 [issue #3](https://github.com/PeteRichardson/royal_navy_ships_dataset/issues/3)).
+
+Ships are selected by rating class rather than by a date range, because the rating
+system is itself an era boundary. Two classes are exceptions: Wikidata's
+`sloop-of-war` and `gun-brig` are not era-bounded, and the same classes cover
+20th-century convoy escorts. Those two — and only those two — are additionally
+constrained to vessels dated before 1860.
 
 ## Sources
 
