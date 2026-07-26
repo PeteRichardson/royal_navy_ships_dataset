@@ -5,8 +5,40 @@ from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
 
+# Ship ids are derived rather than drawn at random, so a ship keeps the same id
+# in every release and consumers can join across dataset versions. The namespace
+# below is uuid5(NAMESPACE_URL, "https://github.com/PeteRichardson/royal_navy_ships_dataset"),
+# written out as a literal because recomputing it from a string means an edit to
+# that string silently renumbers the entire dataset. It must never change.
+SHIP_ID_NAMESPACE = uuid.UUID("41714beb-335c-5c64-b798-3329efefc252")
+
+# Which external identifier a ship's id is derived from, best first. Only the
+# first match is used, so adding a system to the end never moves an existing
+# ship's id -- but reordering this tuple would.
+ID_SOURCE_PRECEDENCE = ("wikidata", "dbpedia")
+
+
 def new_ship_id() -> str:
+    """A fresh random id, for a ship with no stable external identifier."""
     return str(uuid.uuid4())
+
+
+def ship_id(external_ids: Dict[str, str]) -> str:
+    """A stable id derived from `external_ids`, or a random one if none apply.
+
+    Deriving beats storing a QID-to-id map: there is no file to commit, keep in
+    sync, or lose, the dataset is reproducible from a fresh checkout, and a ship
+    that disappears from Wikidata and later returns is recognised as the same
+    vessel rather than being issued a second id.
+
+    The identifier system is part of the hashed key, so two systems that happen
+    to issue the same string do not collide.
+    """
+    for system in ID_SOURCE_PRECEDENCE:
+        value = external_ids.get(system)
+        if value:
+            return str(uuid.uuid5(SHIP_ID_NAMESPACE, f"{system}:{value}"))
+    return new_ship_id()
 
 
 # Scalar fields that carry a single canonical answer merged from one or more
