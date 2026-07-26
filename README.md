@@ -34,7 +34,10 @@ setup beyond a Python 3 checkout.
 
 `ships.json` is a JSON array with one object per ship:
 
-- `id` — a stable, dataset-internal identifier (a UUID), independent of any source.
+- `id` — a stable, dataset-internal identifier (a UUID). Derived from the ship's
+  Wikidata QID, so it is the same in every release: you can join across dataset
+  versions, and a ship that vanishes from Wikidata and later reappears keeps its
+  original id. Renaming or re-rating a ship does not change it.
 - `external_ids` — identifiers in other systems, e.g. `{"wikidata": "Q213958",
   "dbpedia": "HMS_Victory"}`.
 - `names` — a time-qualified list of names, since ships were frequently renamed or
