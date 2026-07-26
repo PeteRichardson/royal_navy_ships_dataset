@@ -43,7 +43,11 @@ setup beyond a Python 3 checkout.
 - `names` — a time-qualified list of names, since ships were frequently renamed or
   rebuilt under a new name.
 - `events` — a timeline of significant events (launched, renamed, wrecked, broken up,
-  etc.), each optionally dated.
+  etc.), each optionally dated. Wikidata's coverage thins out sharply towards the end
+  of a ship's life: of the 2,190 ships with any dated event, only 37 have a timeline
+  that records how the vessel ended. Don't read the last event as a fate — for most
+  ships it is simply the last thing anyone recorded, usually the launch. `fate`, where
+  present, is the field that actually states an outcome.
 - `rating` — the sailing-ship rating class (`First` .. `Sixth`, `Sloop`, `Gun-brig`).
   A ship reclassified during its career can carry several on Wikidata; the highest
   is recorded, so a vessel tagged both third-rate and gun-brig appears as `Third`.
