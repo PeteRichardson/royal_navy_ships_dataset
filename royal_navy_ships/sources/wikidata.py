@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from royal_navy_ships import cache
 from royal_navy_ships.model import Ship, ShipEvent, ShipName, new_ship_id
@@ -24,6 +24,21 @@ RATING_CLASS_QIDS: Dict[str, str] = {
     "Q928235": "Sloop",
     "Q130396697": "Gun-brig",
 }
+
+# Two of the classes above are not era-bounded on Wikidata: the same
+# `sloop-of-war` QID covers 1790s sailing sloops and 1915 Acacia-class convoy
+# escorts, and `gun-brig` stayed in use into the steam era. Filtering by class
+# alone therefore pulls steam- and steel-era vessels into a sailing-ship
+# dataset. The rated classes need no such bound -- the rating system is itself
+# an era boundary, which is why the class filter was chosen over a date range
+# in the first place -- so they are never era-filtered.
+ERA_LIMITED_RATINGS = frozenset({"Sloop", "Gun-brig"})
+
+# The fleet contains no sloop or gun-brig dated between 1853 and 1882, so every
+# cutoff in that gap selects exactly the same ships. 1860 sits inside it with
+# room either side, and is deliberately applied only to ERA_LIMITED_RATINGS
+# rather than as a blanket date range across the query.
+ERA_CUTOFF_YEAR = 1860
 
 CHUNK_SIZE = 200
 
@@ -107,6 +122,21 @@ def parse_candidates(rows: List[dict]) -> Dict[str, dict]:
     return ships
 
 
+def _event_date(row: dict) -> Optional[str]:
+    """The row's P585 qualifier, or None if it isn't actually a date.
+
+    Wikidata renders an explicit "unknown value" qualifier as a skolem IRI
+    (`.well-known/genid/...`) in the same slot a time literal would occupy --
+    86 launch events in the current fleet carry one. Storing that as a date
+    would make `Ship.start_year`, which parses the leading four characters of
+    each event date, raise ValueError.
+    """
+    value = row.get("date", {}).get("value")
+    if value is None or not value[:4].isdigit():
+        return None
+    return value
+
+
 def attach_events(ships: Dict[str, dict], rows: List[dict]) -> None:
     for row in rows:
         qid = _qid_from_uri(row["ship"]["value"])
@@ -115,7 +145,7 @@ def attach_events(ships: Dict[str, dict], rows: List[dict]) -> None:
         ships[qid]["events"].append(
             ShipEvent(
                 description=row.get("eventLabel", {}).get("value", ""),
-                date=row.get("date", {}).get("value"),
+                date=_event_date(row),
                 named_as=row.get("namedAs", {}).get("value"),
             )
         )
@@ -164,6 +194,21 @@ def to_ships(ships: Dict[str, dict]) -> List[Ship]:
     return result
 
 
+def in_sailing_era(ship: Ship) -> bool:
+    """Whether `ship` belongs in a sailing-ship dataset.
+
+    Only ratings in ERA_LIMITED_RATINGS are tested; every other ship passes.
+    A ship with no dated event is kept -- all such ships in the current fleet
+    are sailing-era, and dropping them would discard real vessels to guard
+    against a case that does not yet occur.
+    """
+    if ship.rating not in ERA_LIMITED_RATINGS:
+        return True
+    if ship.start_year is None:
+        return True
+    return ship.start_year < ERA_CUTOFF_YEAR
+
+
 def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool, dict]:
     """Fetch ships from Wikidata. Returns (ships, changed, raw) -- changed is False
     if the freshly-fetched raw result is identical to what's cached on disk, and raw
@@ -188,4 +233,8 @@ def fetch_ships(cache_path: Path = CACHE_PATH) -> Tuple[List[Ship], bool, dict]:
     ships = parse_candidates(raw["candidates"])
     attach_events(ships, raw["events"])
     attach_armament(ships, raw["armament"])
-    return to_ships(ships), changed, raw
+
+    # Filtered here rather than in the SPARQL query so the cache keeps the raw
+    # candidate set: `changed` then tracks what the endpoint actually returned,
+    # and the cutoff can be revisited without invalidating the cache.
+    return [s for s in to_ships(ships) if in_sailing_era(s)], changed, raw
