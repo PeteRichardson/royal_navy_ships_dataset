@@ -83,6 +83,35 @@ def _append_unique(items: List[str], value: str) -> None:
         items.append(value)
 
 
+# Wikidata event labels that actually end a ship's existence. `end_year` and
+# `end_reason` report nothing unless the last dated event is one of these --
+# before that gate, "the last dated event" was reported unconditionally, so a
+# ship whose only dated event was its launch claimed to have ended at launch.
+#
+# Drawn from the 31 distinct event labels the fleet actually produces, not
+# invented: this is every one of them that states the vessel was destroyed or
+# disposed of. Deliberately excluded are events a ship survives or outlives --
+# `ship decommissioning` (the hull remains, and many were broken up years
+# later), `capture` (HMS Implacable was captured *into* the Royal Navy and
+# served another 144 years), `transfer`, `striking`, `explosion`, and named
+# incidents like `Great Hurricane of 1780`, which record participation rather
+# than fate.
+#
+# These are labels, not QIDs, so a Wikidata relabelling silently drops an
+# event out of the set. Matching on event QIDs would be more robust but needs
+# a QID on ShipEvent, which the events query already binds but the model does
+# not carry.
+FINAL_EVENT_LABELS = frozenset({
+    "destruction",
+    "scrapping",
+    "ship breaking",
+    "ship disposal",
+    "shipwrecking",
+    "sinking",
+    "wreck",
+})
+
+
 @dataclass
 class ShipName:
     name: str
@@ -195,6 +224,20 @@ class Ship:
     def _dated_events(self) -> List[ShipEvent]:
         return sorted((e for e in self.events if e.date), key=lambda e: e.date)
 
+    def _final_event(self) -> Optional[ShipEvent]:
+        """The event that ended the ship, or None if the timeline doesn't say.
+
+        Gated on the *last* dated event rather than on any terminal event
+        appearing somewhere in the timeline: a non-terminal event dated after
+        a terminal one means the record is inconsistent, and reading an end
+        out of it would assert more than the data supports.
+        """
+        dated = self._dated_events()
+        if not dated:
+            return None
+        last = dated[-1]
+        return last if last.description in FINAL_EVENT_LABELS else None
+
     @property
     def start_year(self) -> Optional[int]:
         dated = self._dated_events()
@@ -202,13 +245,13 @@ class Ship:
 
     @property
     def end_year(self) -> Optional[int]:
-        dated = self._dated_events()
-        return int(dated[-1].date[:4]) if dated else None
+        final = self._final_event()
+        return int(final.date[:4]) if final else None
 
     @property
     def end_reason(self) -> Optional[str]:
-        dated = self._dated_events()
-        return dated[-1].description if dated else None
+        final = self._final_event()
+        return final.description if final else None
 
     def to_dict(self) -> dict:
         return asdict(self)
