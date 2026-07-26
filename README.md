@@ -41,7 +41,10 @@ setup beyond a Python 3 checkout.
 - `external_ids` — identifiers in other systems, e.g. `{"wikidata": "Q213958",
   "dbpedia": "HMS_Victory"}`.
 - `names` — a time-qualified list of names, since ships were frequently renamed or
-  rebuilt under a new name.
+  rebuilt under a new name. Built only from naming events that carry a date: an
+  undated one can't be placed in the sequence, so it is recorded in `notes` instead
+  (see below) rather than dropped. A ship with no tagged naming events gets a single
+  entry from its current Wikidata label, with no dates.
 - `events` — a timeline of significant events (launched, renamed, wrecked, broken up,
   etc.), each optionally dated. Wikidata's coverage thins out sharply towards the end
   of a ship's life: of the 2,017 ships with any dated event, only 35 have a timeline
@@ -61,7 +64,9 @@ setup beyond a Python 3 checkout.
 - `tonnage`, `length`, `beam`, `complement`, `sail_plan`, `builder`, `fate` —
   descriptive detail, largely from Wikipedia infoboxes via DBpedia. Present for most
   ships that have a Wikipedia article.
-- `notes` — a short free-text description.
+- `notes` — a short free-text description. Where Wikidata records a former name with
+  no date attached, it is appended here as *"Also recorded as X, with no date given
+  for the change"* — the name is real, but its place in `names` would be a guess.
 - `field_sources` — which sources concur on each field above, as a list in the order
   they were recorded, e.g. `{"rating": ["wikidata"], "builder": ["wikidata", "dbpedia"]}`.
   More than one entry means the sources agree, not that the value is contested.
