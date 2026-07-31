@@ -1,8 +1,9 @@
 """Canonical Ship data model shared by all source adapters."""
 
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 # Ship ids are derived rather than drawn at random, so a ship keeps the same id
@@ -110,6 +111,53 @@ FINAL_EVENT_LABELS = frozenset({
     "sinking",
     "wreck",
 })
+
+# The Wikidata timeline records an ending for 35 ships; `fate` -- a Wikipedia
+# infobox fragment, via DBpedia -- records one for about 880. So `end_year` and
+# `end_reason` fall back to parsing `fate` when the timeline says nothing.
+#
+# `fate` is free text, but its grammar is narrow: a leading verb, then
+# optionally a month and a year ("Broken up April 1811", "Sold for breaking up
+# in 1816", "Wrecked, 1809"). Only that leading verb is read. It is what the
+# sentence is *about*, so the year nearest it is the year that goes with it --
+# "Recaptured 1776 and sold, possibly in 1777" mentions a terminal verb, but
+# reading it would report a disposal that the string dates to a recapture.
+#
+# Values are FINAL_EVENT_LABELS entries, deliberately: `end_reason` is one
+# vocabulary whatever source it came from, so a consumer can group on it, and
+# `fate` itself keeps the fuller human-readable text either way.
+#
+# Verbs a ship *survives* are absent for the same reason `capture` is absent
+# from FINAL_EVENT_LABELS -- `captured`, `taken`, `hulked`, `decommissioned`,
+# `struck`, `returned`. So are verbs that state an ending without naming one:
+# `lost`, `abandoned`, `disappeared`, `condemned`, `presumed`. They are
+# terminal in meaning, but every label here asserts a *manner* of ending, and
+# picking one for them would invent a detail the string withholds.
+FATE_OUTCOMES: Dict[str, str] = {
+    "breaking": "ship breaking",
+    "broken": "ship breaking",
+    "burned": "destruction",
+    "burnt": "destruction",
+    "destroyed": "destruction",
+    "foundered": "sinking",
+    "sank": "sinking",
+    "scrapped": "scrapping",
+    "scuttled": "destruction",
+    "sold": "ship disposal",
+    "sunk": "sinking",
+    "wrecked": "shipwrecking",
+}
+
+# The fleet spans the 1500s to the early 1900s. Bounding the pattern rather
+# than matching any four digits keeps a stray figure elsewhere in the string
+# from being read as a date.
+FATE_YEAR_RE = re.compile(r"\b1[5-9]\d{2}\b")
+LEADING_WORD_RE = re.compile(r"[A-Za-z]+")
+
+# Events are structural -- they are owned by the adapter that produced them
+# rather than merged through `set_field`, so there is no `field_sources` entry
+# to consult for an end derived from the timeline.
+EVENT_SOURCE = "wikidata"
 
 
 @dataclass
@@ -238,6 +286,57 @@ class Ship:
         last = dated[-1]
         return last if last.description in FINAL_EVENT_LABELS else None
 
+    def _fate_end(self) -> Optional[Tuple[Optional[int], str]]:
+        """`(year, label)` read out of `fate`, or None if it states no ending.
+
+        The year is optional and the label is not: a stated outcome with no
+        date still answers "how did this ship end", and 21 ships in the
+        current fleet are in exactly that position ("Sold", "Broken up").
+        The reverse -- a year with no recognised outcome -- is not an ending
+        at all, and is what "Last listed in 1808" and "Captured 1794" are.
+        """
+        if not self.fate:
+            return None
+        leading = LEADING_WORD_RE.match(self.fate)
+        if leading is None:
+            return None
+        label = FATE_OUTCOMES.get(leading.group().lower())
+        if label is None:
+            return None
+        year = FATE_YEAR_RE.search(self.fate)
+        return (int(year.group()) if year else None, label)
+
+    def _end(self) -> Optional[Tuple[Optional[int], str, Optional[str]]]:
+        """`(year, reason, source)` for however this ship ended, or None.
+
+        A Wikidata terminal event beats `fate` where both exist -- which is
+        SOURCE_PRIORITY applied rather than an exception to it, so this is an
+        ordinary fallback chain. It is also the better answer on the 18 ships
+        that have both: the event vocabulary is controlled and already gated
+        on being terminal, while `fate` sometimes holds a career event dressed
+        as an outcome ("Surrendered by mutineers 1796" for a ship the timeline
+        records sinking in 1801).
+        """
+        final = self._final_event()
+        if final:
+            return (int(final.date[:4]), final.description, EVENT_SOURCE)
+        fate_end = self._fate_end()
+        if fate_end:
+            year, label = fate_end
+            return (year, label, self._fate_source())
+        return None
+
+    def _fate_source(self) -> Optional[str]:
+        """The highest-priority source concurring on the canonical `fate`.
+
+        Read from `field_sources` rather than hardcoded to `dbpedia`: `fate`
+        is a mergeable field, so a higher-priority source supplying it takes
+        the attribution with it. None only for a `Ship` whose `fate` was
+        assigned directly instead of through `set_field`.
+        """
+        sources = self.field_sources.get("fate", [])
+        return min(sources, key=source_priority) if sources else None
+
     @property
     def start_year(self) -> Optional[int]:
         dated = self._dated_events()
@@ -245,13 +344,36 @@ class Ship:
 
     @property
     def end_year(self) -> Optional[int]:
-        final = self._final_event()
-        return int(final.date[:4]) if final else None
+        end = self._end()
+        return end[0] if end else None
 
     @property
     def end_reason(self) -> Optional[str]:
-        final = self._final_event()
-        return final.description if final else None
+        end = self._end()
+        return end[1] if end else None
+
+    @property
+    def end_reason_source(self) -> Optional[str]:
+        """Which source `end_reason` was derived from. A controlled Wikidata
+        event and a verb parsed out of an infobox fragment do not deserve
+        equal confidence, and nothing else in the record tells them apart."""
+        end = self._end()
+        return end[2] if end else None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        """The stored fields plus the derived ones.
+
+        `asdict` serializes fields only, so the properties have to be added by
+        hand -- without this they are invisible to every consumer of the
+        published `ships.json`, which is most of them. All four keys are
+        always present, `None` included: a key that appears for some ships and
+        not others makes every consumer reach for `.get`.
+        """
+        data = asdict(self)
+        data.update(
+            start_year=self.start_year,
+            end_year=self.end_year,
+            end_reason=self.end_reason,
+            end_reason_source=self.end_reason_source,
+        )
+        return data

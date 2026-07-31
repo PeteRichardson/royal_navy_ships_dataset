@@ -49,9 +49,8 @@ setup beyond a Python 3 checkout.
   etc.), each optionally dated. Wikidata's coverage thins out sharply towards the end
   of a ship's life: of the 2,017 ships with any dated event, only 35 have a timeline
   that records how the vessel ended, and for 1,573 the last recorded event is simply
-  the launch. Don't read the last event as a fate. **`fate` is the field that states
-  an outcome** — it is present for 1,054 ships, half the fleet, and is sourced from
-  Wikipedia infoboxes rather than the Wikidata timeline.
+  the launch. Don't read the last event as a fate — use `end_reason`, which applies
+  that gate for you and falls back to `fate` where the timeline says nothing.
 - `rating` — the sailing-ship rating class (`First` .. `Sixth`, `Sloop`, `Gun-brig`).
   A ship reclassified during its career can carry several on Wikidata; the highest
   is recorded, so a vessel tagged both third-rate and gun-brig appears as `Third`.
@@ -63,7 +62,28 @@ setup beyond a Python 3 checkout.
 - `armament` — the full armament description, usually a per-deck breakdown.
 - `tonnage`, `length`, `beam`, `complement`, `sail_plan`, `builder`, `fate` —
   descriptive detail, largely from Wikipedia infoboxes via DBpedia. Present for most
-  ships that have a Wikipedia article.
+  ships that have a Wikipedia article. `fate` stays the fullest statement of how a
+  ship ended — *"Sold for breaking up in 1816"* says more than the bare `end_reason`
+  label — and is the field to read when you want the sentence rather than a category.
+- `start_year`, `end_year`, `end_reason`, `end_reason_source` — derived, not
+  reported by any single source, and always present (`null` where unknown).
+  `start_year` is the earliest dated event whatever it is. The other three answer
+  *how did this ship end*:
+  - `end_reason` is one of seven labels — `ship breaking`, `ship disposal`,
+    `shipwrecking`, `sinking`, `destruction`, `scrapping`, `wreck` — so it can be
+    grouped on. Present for 906 ships. It is deliberately silent rather than
+    guessing: a ship that was captured, hulked, decommissioned or simply *"last
+    listed in 1808"* has no `end_reason`, because none of those is an ending.
+  - `end_reason_source` says where that answer came from, and the two are not
+    equally confident. `"wikidata"` (35 ships) means a dated event from a
+    controlled vocabulary. `"dbpedia"` (871 ships) means the leading verb of the
+    `fate` sentence was recognised and matched to a label — a good parse of a
+    free-text infobox fragment, but a parse. Wikidata wins where both exist.
+  - `end_year` comes from the same source as `end_reason`, and is `null` for 21
+    ships whose `fate` states an outcome with no date (*"Sold"*). It is not
+    cross-checked against `start_year`: one ship, HMS *Camel*, reports an end the
+    year before Wikidata says it launched, which is a real disagreement between the
+    two sources rather than something to paper over.
 - `notes` — a short free-text description. Where Wikidata records a former name with
   no date attached, it is appended here as *"Also recorded as X, with no date given
   for the change"* — the name is real, but its place in `names` would be a guess.
@@ -100,6 +120,10 @@ captured in 1805, later renamed *Foudroyant*):
   "sail_plan": "Full-rigged ship",
   "builder": "Rochefort",
   "fate": "Scuttled off Portsmouth, 2 December 1949",
+  "start_year": 1800,
+  "end_year": 1949,
+  "end_reason": "destruction",
+  "end_reason_source": "dbpedia",
   "rating": "Third",
   "notes": "French Téméraire-class ship of the line, captured by the Royal Navy at Trafalgar.",
   "field_sources": {
